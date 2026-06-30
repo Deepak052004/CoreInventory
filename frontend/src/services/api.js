@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // ─── Axios Instance ────────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true, // Required for HttpOnly refresh token cookie
 });
