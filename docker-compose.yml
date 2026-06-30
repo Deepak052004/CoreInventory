@@ -16,33 +16,9 @@ services:
       - JWT_REFRESH_SECRET=docker_refresh_secret_jwt_token_2026
       - JWT_REFRESH_EXPIRE=7d
       - FRONTEND_URL=http://localhost:5005
-      - OLLAMA_URL=http://ollama:11434
     env_file:
       - ./backend/.env
-    # depends_on:
-    #   - mongo
     restart: unless-stopped
-    depends_on:
-      - ollama
-
-  # The local Ollama server running in Docker
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    restart: unless-stopped
-
-  # An initialization container that runs once to download the Llama3.2 model
-  # into the ollama_data volume so it is ready to use automatically.
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    command: pull llama3.2
 
   # Uncomment the block below to run a local MongoDB instance instead of Atlas
   # mongo:
@@ -55,5 +31,3 @@ services:
 
 # volumes:
 #   mongo_data:
-volumes:
-  ollama_data:
