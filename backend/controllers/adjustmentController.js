@@ -24,27 +24,32 @@ export const getAll = async (req, res, next) => {
 
 export const create = async (req, res, next) => {
   try {
-    const { product, warehouse, locationName, countedQuantity, reason } = req.body;
+    const { product, warehouse, countedQuantity, reason } = req.body;
     const prod = await Product.findById(product);
     if (!prod) return res.status(404).json({ success: false, message: 'Product not found' });
-    const systemQuantity = prod.stockQuantity ?? 0;
+    
+    let locEntry = prod.stockLocations?.find((s) => s.warehouse?.toString() === warehouse);
+    const systemQuantity = locEntry ? (locEntry.quantity || 0) : 0;
+    
     const difference = Number(countedQuantity) - systemQuantity;
+    
     const adjustment = await Adjustment.create({
       product,
       warehouse,
-      locationName: locationName || '',
       systemQuantity,
       countedQuantity: Number(countedQuantity),
       difference,
       reason: reason || '',
       createdBy: req.user._id,
     });
-    prod.stockQuantity = Number(countedQuantity);
-    const locEntry = prod.stockByLocation?.find((s) => s.warehouse?.toString() === warehouse);
-    if (locEntry) locEntry.quantity = Number(countedQuantity);
-    else if (prod.stockByLocation?.length) {
-      prod.stockByLocation.push({ warehouse, locationName: locationName || '', quantity: Number(countedQuantity) });
+    
+    if (!locEntry) {
+      prod.stockLocations = prod.stockLocations || [];
+      prod.stockLocations.push({ warehouse, quantity: Number(countedQuantity), minStockLevel: 0 });
+    } else {
+      locEntry.quantity = Number(countedQuantity);
     }
+    
     await prod.save();
     await StockLedger.create({
       product,

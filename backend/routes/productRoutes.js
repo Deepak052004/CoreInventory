@@ -1,8 +1,10 @@
 import express from 'express';
+import multer from 'multer';
 import { protect } from '../middleware/auth.js';
-import { getAll, getOne, create, update, remove } from '../controllers/productController.js';
+import { getAll, getOne, create, update, remove, importCSV } from '../controllers/productController.js';
 import { body, param, validationResult } from 'express-validator';
 
+const upload = multer({ dest: 'uploads/' });
 const router = express.Router();
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -11,6 +13,8 @@ const validate = (req, res, next) => {
 };
 
 router.use(protect);
+
+router.post('/import', upload.single('file'), importCSV);
 
 router.get('/', getAll);
 router.get('/:id', [param('id').isMongoId()], validate, getOne);

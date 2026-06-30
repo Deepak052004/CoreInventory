@@ -71,28 +71,31 @@ export const completeTransfer = async (req, res, next) => {
     if (transfer.status === 'done') return res.status(400).json({ success: false, message: 'Already completed' });
     const product = await Product.findById(transfer.product._id);
     if (!product) return res.status(400).json({ success: false, message: 'Product not found' });
-    const srcEntry = product.stockByLocation?.find((s) => s.warehouse?.toString() === transfer.sourceWarehouse._id.toString());
+    // Deduct from Source
+    const srcEntry = product.stockLocations?.find((s) => s.warehouse?.toString() === transfer.sourceWarehouse._id.toString());
     const srcQty = srcEntry?.quantity || 0;
-    if (srcQty < transfer.quantity) return res.status(400).json({ success: false, message: 'Insufficient stock at source' });
+    if (srcQty < transfer.quantity) return res.status(400).json({ success: false, message: 'Insufficient stock at source warehouse' });
     if (srcEntry) srcEntry.quantity -= transfer.quantity;
-    let destEntry = product.stockByLocation?.find((s) => s.warehouse?.toString() === transfer.destinationWarehouse._id.toString());
+    
+    // Add to Destination
+    let destEntry = product.stockLocations?.find((s) => s.warehouse?.toString() === transfer.destinationWarehouse._id.toString());
     if (!destEntry) {
-      product.stockByLocation = product.stockByLocation || [];
-      product.stockByLocation.push({
+      product.stockLocations = product.stockLocations || [];
+      product.stockLocations.push({
         warehouse: transfer.destinationWarehouse._id,
-        locationName: transfer.destinationLocationName || '',
         quantity: transfer.quantity,
+        minStockLevel: 0
       });
     } else {
-      destEntry.quantity += transfer.quantity;
+      destEntry.quantity = (destEntry.quantity || 0) + transfer.quantity;
     }
+    
     await product.save();
     await StockLedger.create({
       product: product._id,
       quantity: -transfer.quantity,
       operationType: 'transfer_out',
       sourceWarehouse: transfer.sourceWarehouse._id,
-      sourceLocationName: transfer.sourceLocationName || '',
       reference: transfer.reference,
       user: req.user._id,
     });
@@ -101,7 +104,6 @@ export const completeTransfer = async (req, res, next) => {
       quantity: transfer.quantity,
       operationType: 'transfer_in',
       destinationWarehouse: transfer.destinationWarehouse._id,
-      destinationLocationName: transfer.destinationLocationName || '',
       reference: transfer.reference,
       user: req.user._id,
     });

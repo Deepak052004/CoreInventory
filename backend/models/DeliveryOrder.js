@@ -4,13 +4,15 @@ const deliveryLineSchema = new mongoose.Schema({
   product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
   quantity: { type: Number, required: true, min: 1 },
   warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse', required: true },
+  lotIdentifier: { type: String, trim: true, uppercase: true },
   locationName: { type: String, default: '' },
 });
 
 const deliveryOrderSchema = new mongoose.Schema(
   {
     reference: { type: String, required: true, unique: true },
-    customer: { type: String, required: true },
+    salesOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder' },
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
     lines: [deliveryLineSchema],
     status: {
       type: String,

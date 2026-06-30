@@ -7,14 +7,21 @@ import mongoose from 'mongoose';
 
 export const getKpis = async (req, res, next) => {
   try {
-    const [totalProducts, lowStock, outOfStock, pendingReceipts, pendingDeliveries, scheduledTransfers] = await Promise.all([
+    const [totalProducts, lowStock, outOfStock, pendingReceipts, pendingDeliveries, scheduledTransfers, valuationResult] = await Promise.all([
       Product.countDocuments(),
       Product.countDocuments({ $expr: { $gt: ['$reorderLevel', '$stockQuantity'] }, stockQuantity: { $gt: 0 } }),
       Product.countDocuments({ $or: [{ stockQuantity: 0 }, { stockQuantity: { $exists: false } }] }),
       Receipt.countDocuments({ status: { $in: ['draft', 'waiting', 'ready'] } }),
       DeliveryOrder.countDocuments({ status: { $in: ['draft', 'waiting', 'ready'] } }),
       Transfer.countDocuments({ status: { $in: ['draft', 'scheduled', 'in_transit'] } }),
+      Product.aggregate([
+        { $unwind: "$stockLocations" },
+        { $group: { _id: null, totalValue: { $sum: { $multiply: ["$stockLocations.quantity", { $ifNull: ["$costPrice", 0] }] } } } }
+      ])
     ]);
+    
+    const totalInventoryValue = valuationResult[0]?.totalValue || 0;
+    
     res.json({
       success: true,
       data: {
@@ -24,6 +31,7 @@ export const getKpis = async (req, res, next) => {
         pendingReceipts,
         pendingDeliveries,
         scheduledTransfers,
+        totalInventoryValue,
       },
     });
   } catch (err) {
@@ -84,6 +92,63 @@ export const getDashboardFilters = async (req, res, next) => {
     const Category = (await import('../models/Category.js')).default;
     const [warehouses, categories] = await Promise.all([Warehouse.find().select('name _id'), Category.find().select('name _id')]);
     res.json({ success: true, data: { warehouses, categories } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getTopSellingItems = async (req, res, next) => {
+  try {
+    const days = Number(req.query.days) || 30;
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+
+    const topItems = await DeliveryOrder.aggregate([
+      { $match: { status: 'done', updatedAt: { $gte: start } } },
+      { $unwind: '$lines' },
+      { $group: { _id: '$lines.product', totalQuantity: { $sum: '$lines.quantity' } } },
+      { $sort: { totalQuantity: -1 } },
+      { $limit: 10 },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+      { $unwind: '$product' },
+      { $project: { _id: 1, name: '$product.name', SKU: '$product.SKU', totalQuantity: 1, category: '$product.category' } }
+    ]);
+
+    res.json({ success: true, data: topItems });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getLowStockAlerts = async (req, res, next) => {
+  try {
+    const lowStock = await Product.aggregate([
+      { 
+        $match: { 
+          $expr: { $lte: ['$stockQuantity', { $ifNull: ['$reorderLevel', 0] }] }
+        }
+      },
+      { $sort: { stockQuantity: 1 } },
+      { $limit: 20 },
+      { $lookup: { from: 'categories', localField: 'category', foreignField: '_id', as: 'categoryData' } },
+      { $unwind: { path: '$categoryData', preserveNullAndEmptyArrays: true } },
+      { $project: { name: 1, SKU: 1, stockQuantity: 1, reorderLevel: 1, categoryName: '$categoryData.name' } }
+    ]);
+    res.json({ success: true, data: lowStock });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getRecentActivity = async (req, res, next) => {
+  try {
+    const recent = await StockLedger.find()
+      .populate('product', 'name SKU')
+      .populate('warehouse', 'name')
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(10);
+    res.json({ success: true, data: recent });
   } catch (err) {
     next(err);
   }

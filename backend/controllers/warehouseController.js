@@ -2,7 +2,7 @@ import Warehouse from '../models/Warehouse.js';
 
 export const getAll = async (req, res, next) => {
   try {
-    const warehouses = await Warehouse.find().sort({ name: 1 });
+    const warehouses = await Warehouse.find().populate('managers', 'name email').sort({ name: 1 });
     res.json({ success: true, data: warehouses });
   } catch (err) {
     next(err);
@@ -11,7 +11,7 @@ export const getAll = async (req, res, next) => {
 
 export const getOne = async (req, res, next) => {
   try {
-    const warehouse = await Warehouse.findById(req.params.id);
+    const warehouse = await Warehouse.findById(req.params.id).populate('managers', 'name email');
     if (!warehouse) return res.status(404).json({ success: false, message: 'Warehouse not found' });
     res.json({ success: true, data: warehouse });
   } catch (err) {

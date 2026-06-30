@@ -1,14 +1,18 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
-import { getKpis, getInventoryDistribution, getCategoryStats, getStockMovementHistory, getDashboardFilters } from '../controllers/dashboardController.js';
+import * as dashboardController from '../controllers/dashboardController.js';
 
 const router = express.Router();
 router.use(protect);
 
-router.get('/kpis', getKpis);
-router.get('/inventory-distribution', getInventoryDistribution);
-router.get('/category-stats', getCategoryStats);
-router.get('/stock-movement', getStockMovementHistory);
-router.get('/filters', getDashboardFilters);
+router.get('/kpis', dashboardController.getKpis);
+router.get('/inventory-distribution', dashboardController.getInventoryDistribution);
+router.get('/category-stats', dashboardController.getCategoryStats);
+router.get('/stock-movement', dashboardController.getStockMovementHistory);
+router.get('/filters', dashboardController.getDashboardFilters);
+
+router.get('/top-selling', dashboardController.getTopSellingItems);
+router.get('/low-stock', dashboardController.getLowStockAlerts);
+router.get('/recent-activity', dashboardController.getRecentActivity);
 
 export default router;

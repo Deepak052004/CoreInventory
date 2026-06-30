@@ -3,17 +3,20 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import { dashboardApi } from '../services/api';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
-import { Package, AlertTriangle, XCircle, ClipboardList, Truck, ArrowLeftRight } from 'lucide-react';
+import { Package, AlertTriangle, XCircle, ClipboardList, Truck, DollarSign, TrendingUp, Activity, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 
 const kpiConfig = [
+  { key: 'totalInventoryValue', label: 'Total Inventory Value', icon: DollarSign, color: 'from-blue-500 to-indigo-600', bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', isCurrency: true },
   { key: 'totalProducts', label: 'Total Products', icon: Package, color: 'from-emerald-500 to-teal-600', bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-400' },
   { key: 'lowStockItems', label: 'Low Stock Items', icon: AlertTriangle, color: 'from-amber-500 to-orange-600', bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400' },
   { key: 'outOfStockItems', label: 'Out of Stock', icon: XCircle, color: 'from-red-500 to-rose-600', bg: 'bg-red-500/10', text: 'text-red-600 dark:text-red-400' },
-  { key: 'pendingReceipts', label: 'Pending Receipts', icon: ClipboardList, color: 'from-blue-500 to-indigo-600', bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400' },
+  { key: 'pendingReceipts', label: 'Pending Receipts', icon: ClipboardList, color: 'from-slate-500 to-slate-600', bg: 'bg-slate-500/10', text: 'text-slate-600 dark:text-slate-400' },
   { key: 'pendingDeliveries', label: 'Pending Deliveries', icon: Truck, color: 'from-violet-500 to-purple-600', bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-400' },
-  { key: 'scheduledTransfers', label: 'Scheduled Transfers', icon: ArrowLeftRight, color: 'from-cyan-500 to-sky-600', bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-400' },
 ];
 
 export default function Dashboard() {
@@ -21,12 +24,19 @@ export default function Dashboard() {
   const [distribution, setDistribution] = useState([]);
   const [categoryStats, setCategoryStats] = useState([]);
   const [movement, setMovement] = useState([]);
+  
+  const [topItems, setTopItems] = useState([]);
+  const [lowStockAlerts, setLowStockAlerts] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
 
   useEffect(() => {
     dashboardApi.getKpis().then((r) => setKpis(r.data.data)).catch(() => {});
     dashboardApi.getInventoryDistribution().then((r) => setDistribution(r.data.data || [])).catch(() => {});
     dashboardApi.getCategoryStats().then((r) => setCategoryStats(r.data.data || [])).catch(() => {});
     dashboardApi.getStockMovement(30).then((r) => setMovement(r.data.data || [])).catch(() => {});
+    dashboardApi.getTopSellingItems().then((r) => setTopItems(r.data.data || [])).catch(() => {});
+    dashboardApi.getLowStockAlerts().then((r) => setLowStockAlerts(r.data.data || [])).catch(() => {});
+    dashboardApi.getRecentActivity().then((r) => setRecentActivity(r.data.data || [])).catch(() => {});
   }, []);
 
   const doughnutData = {
@@ -74,13 +84,15 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {kpiConfig.map(({ key, label, icon: Icon, color, bg, text }) => (
+        {kpiConfig.map(({ key, label, icon: Icon, color, bg, text, isCurrency }) => (
           <Card key={key} className="overflow-hidden hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-none transition-all duration-300 group">
             <CardContent className="p-5">
               <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center ${text} mb-3 group-hover:scale-110 transition-transform`}>
                 <Icon className="w-5 h-5" />
               </div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">{kpis?.[key] ?? '–'}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                {kpis?.[key] !== undefined ? (isCurrency ? `$${kpis[key].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : kpis[key].toLocaleString()) : '–'}
+              </p>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
             </CardContent>
             <div className={`h-1 bg-gradient-to-r ${color} opacity-80`} />
@@ -130,6 +142,116 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* Top Selling Items */}
+        <Card className="overflow-hidden xl:col-span-1">
+          <CardHeader className="bg-slate-50/50 dark:bg-slate-800/20 py-4 border-b border-slate-100 dark:border-slate-800">
+            <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-500" /> Top Selling Items (30 Days)
+            </h2>
+          </CardHeader>
+          <CardContent className="p-0">
+            {topItems.length > 0 ? (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {topItems.map((item, i) => (
+                  <div key={item._id} className="flex items-center justify-between p-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">#{i + 1}</div>
+                      <div>
+                        <p className="font-medium text-sm text-slate-900 dark:text-white line-clamp-1">{item.name}</p>
+                        <p className="text-xs text-slate-500">{item.SKU}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold text-indigo-600 dark:text-indigo-400">{item.totalQuantity}</span>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Shipped</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500">No sales data yet</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Low Stock Alerts */}
+        <Card className="overflow-hidden xl:col-span-1 border-amber-200 dark:border-amber-900/50">
+          <CardHeader className="bg-amber-50/50 dark:bg-amber-900/10 py-4 border-b border-amber-100 dark:border-amber-900/30">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-amber-900 dark:text-amber-300 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" /> Low Stock Alerts
+              </h2>
+              <Link to="/purchase-orders/new">
+                <Button size="sm" variant="ghost" className="h-8 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                  <Plus className="w-4 h-4 mr-1" /> Reorder
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {lowStockAlerts.length > 0 ? (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[400px] overflow-y-auto">
+                {lowStockAlerts.map(item => (
+                  <div key={item._id} className="flex items-center justify-between p-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <div>
+                      <Link to={`/products/${item._id}`} className="font-medium text-sm text-slate-900 dark:text-white hover:text-amber-600 transition-colors">{item.name}</Link>
+                      <p className="text-xs text-slate-500">{item.SKU}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="danger" className="text-xs">
+                        {item.stockQuantity} / {item.reorderLevel || 0}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500">All stock levels look good!</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <Card className="overflow-hidden xl:col-span-1">
+          <CardHeader className="bg-slate-50/50 dark:bg-slate-800/20 py-4 border-b border-slate-100 dark:border-slate-800">
+            <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Activity className="w-5 h-5 text-slate-500" /> Recent Activity
+            </h2>
+          </CardHeader>
+          <CardContent className="p-0">
+            {recentActivity.length > 0 ? (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[400px] overflow-y-auto">
+                {recentActivity.map(act => (
+                  <div key={act._id} className="p-4 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={act.operationType === 'receipt' || act.operationType === 'return_in' ? 'success' : act.operationType === 'delivery' || act.operationType === 'return_out' ? 'danger' : 'default'} className="text-[10px] uppercase">
+                          {act.operationType ? act.operationType.replace('_', ' ') : 'UNKNOWN'}
+                        </Badge>
+                      </div>
+                      <span className="text-xs text-slate-400">{new Date(act.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      <span className="font-medium">{act.product?.name}</span>
+                      <span className={`font-semibold ml-2 ${act.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {act.quantity > 0 ? '+' : ''}{act.quantity}
+                      </span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {act.warehouse?.name} • By {act.createdBy?.name || 'System'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500">No recent activity</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import Receipt from '../models/Receipt.js';
 import Product from '../models/Product.js';
 import StockLedger from '../models/StockLedger.js';
+import PurchaseOrder from '../models/PurchaseOrder.js';
+import Lot from '../models/Lot.js';
 import { generateReference } from '../utils/generateReference.js';
 
 export const getAll = async (req, res, next) => {
@@ -35,12 +37,13 @@ export const create = async (req, res, next) => {
     const ref = generateReference('REC');
     const receipt = await Receipt.create({
       reference: ref,
+      purchaseOrder: req.body.purchaseOrder || null,
       supplier: req.body.supplier,
       lines: req.body.lines || [],
       status: 'draft',
       createdBy: req.user._id,
     });
-    const populated = await Receipt.findById(receipt._id).populate('lines.product').populate('lines.warehouse');
+    const populated = await Receipt.findById(receipt._id).populate('lines.product').populate('lines.warehouse').populate('purchaseOrder', 'poNumber');
     res.status(201).json({ success: true, data: populated });
   } catch (err) {
     next(err);
@@ -67,23 +70,56 @@ export const validateReceipt = async (req, res, next) => {
     const receipt = await Receipt.findById(req.params.id).populate('lines.product').populate('lines.warehouse');
     if (!receipt) return res.status(404).json({ success: false, message: 'Receipt not found' });
     if (receipt.status === 'done') return res.status(400).json({ success: false, message: 'Already validated' });
+    // Process Inventory
     for (const line of receipt.lines) {
-      const product = await Product.findById(line.product._id);
+      const product = await Product.findById(line.product);
       if (!product) continue;
-      product.stockQuantity = (product.stockQuantity || 0) + line.quantity;
-      let locEntry = product.stockByLocation?.find(
+      
+      if (product.trackingType === 'batch' || product.trackingType === 'serial') {
+        if (!line.lotIdentifier) {
+          return res.status(400).json({ success: false, message: `Product ${product.name} requires a batch/serial number.` });
+        }
+        if (product.trackingType === 'serial' && line.quantity !== 1) {
+          return res.status(400).json({ success: false, message: `Product ${product.name} is serial-tracked. Quantity per serial must be exactly 1.` });
+        }
+        
+        let lot = await Lot.findOne({ product: product._id, identifier: line.lotIdentifier.toUpperCase() });
+        if (lot && product.trackingType === 'serial') {
+          return res.status(400).json({ success: false, message: `Serial Number ${line.lotIdentifier} already exists for product ${product.name}.` });
+        }
+        
+        if (!lot) {
+          lot = await Lot.create({
+            product: product._id,
+            warehouse: line.warehouse,
+            identifier: line.lotIdentifier.toUpperCase(),
+            quantity: line.quantity,
+            expiryDate: line.expiryDate,
+          });
+        } else {
+          lot.quantity += line.quantity;
+          if (line.expiryDate) lot.expiryDate = line.expiryDate;
+          if (lot.status === 'depleted') lot.status = 'active';
+          await lot.save();
+        }
+      }
+      
+      // Update new stockLocations structure from M4
+      let locEntry = product.stockLocations?.find(
         (s) => s.warehouse?.toString() === line.warehouse._id.toString()
       );
+      
       if (!locEntry) {
-        product.stockByLocation = product.stockByLocation || [];
-        product.stockByLocation.push({
+        product.stockLocations = product.stockLocations || [];
+        product.stockLocations.push({
           warehouse: line.warehouse._id,
-          locationName: line.locationName || '',
           quantity: line.quantity,
+          minStockLevel: 0
         });
       } else {
-        locEntry.quantity += line.quantity;
+        locEntry.quantity = (locEntry.quantity || 0) + line.quantity;
       }
+      
       await product.save();
       await StockLedger.create({
         product: product._id,
@@ -99,7 +135,33 @@ export const validateReceipt = async (req, res, next) => {
     receipt.validatedAt = new Date();
     receipt.validatedBy = req.user._id;
     await receipt.save();
-    const populated = await Receipt.findById(receipt._id).populate('lines.product').populate('lines.warehouse');
+
+    // If linked to a PO, update the PO received quantities and status
+    if (receipt.purchaseOrder) {
+      const po = await PurchaseOrder.findById(receipt.purchaseOrder);
+      if (po) {
+        // Increment received quantities
+        for (const line of receipt.lines) {
+          const poItem = po.items.find(i => i.product.toString() === line.product._id.toString());
+          if (poItem) {
+            poItem.receivedQty = (poItem.receivedQty || 0) + line.quantity;
+          }
+        }
+        
+        // Evaluate overall status
+        const isFullyReceived = po.items.every(i => (i.receivedQty || 0) >= (i.requestedQty || 0));
+        const isPartiallyReceived = po.items.some(i => (i.receivedQty || 0) > 0);
+        
+        if (isFullyReceived) {
+          po.status = 'completed';
+        } else if (isPartiallyReceived) {
+          po.status = 'partial';
+        }
+        await po.save();
+      }
+    }
+
+    const populated = await Receipt.findById(receipt._id).populate('lines.product').populate('lines.warehouse').populate('purchaseOrder', 'poNumber');
     res.json({ success: true, data: populated });
   } catch (err) {
     next(err);

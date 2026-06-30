@@ -1,6 +1,8 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import { useAuth } from '../hooks/useAuth';
+import AiAssistant from '../components/AiAssistant';
 
 export default function Layout() {
   return (
@@ -12,6 +14,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      
+      {/* AI Assistant Widget floating on top of the layout */}
+      <AiAssistant />
     </div>
   );
 }
