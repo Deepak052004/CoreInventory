@@ -25,7 +25,7 @@ export const auditLog = (req, res, next) => {
   // Hook into the response finish event to capture status and final state
   res.on('finish', () => {
     // Determine the resource from the URL (e.g., /api/users -> Users)
-    const pathParts = req.baseUrl.split('/');
+    const pathParts = (req.baseUrl || '').split('/');
     let resource = pathParts[pathParts.length - 1];
     
     // Fallback if baseUrl doesn't give us what we need
